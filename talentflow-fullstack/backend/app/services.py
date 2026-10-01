@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -15,6 +16,8 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobCategory, JobSkill, MatchResult, Message, MessageThread, Resume, SavedJob, Skill, User
 from app.repositories import ApplicationRepository, CandidateRepository, JobRepository, MatchRepository, ResumeRepository, UserRepository
 from app.storage import resume_storage
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -52,11 +55,21 @@ class MatchingService:
         self.db = db
         self.matches = MatchRepository(db)
 
+    @staticmethod
+    def has_analyzed_resume(candidate: Candidate) -> bool:
+        latest_resume = max(candidate.resumes, key=lambda item: item.created_at) if candidate.resumes else None
+        resume_skills = [link for link in candidate.skills if link.source == "resume"]
+        return bool(latest_resume and latest_resume.status == "completed" and resume_skills)
+
     def calculate(self, candidate: Candidate, job: Job) -> MatchResult:
-        candidate_names = {link.skill.name.casefold() for link in candidate.skills}
+        if not self.has_analyzed_resume(candidate):
+            raise HTTPException(status_code=409, detail="Upload a valid resume with identifiable job skills before calculating job matches")
+        candidate_names = {link.skill.name.casefold() for link in candidate.skills if link.source == "resume"}
         required_links = [link for link in job.required_skills if link.required]
         required_names = [link.skill.name for link in required_links]
         matched = [name for name in required_names if name.casefold() in candidate_names]
+        if not matched:
+            raise HTTPException(status_code=409, detail="This resume has no matching required skills for the selected job")
         missing = [name for name in required_names if name.casefold() not in candidate_names]
         skill_score = round(100 * len(matched) / len(required_names)) if required_names else 0
         if candidate.years_experience >= job.experience_min:
@@ -106,7 +119,7 @@ class CandidateService:
         latest_resume = max(candidate.resumes, key=lambda item: item.created_at) if candidate.resumes else None
         return {"id": candidate.id, "full_name": candidate.full_name, "years_experience": candidate.years_experience,
                 "highest_education": candidate.highest_education, "desired_role": candidate.desired_role,
-                "email": user.email, "skills": [link.skill.name for link in candidate.skills],
+                "email": user.email, "skills": [link.skill.name for link in candidate.skills if link.source == "resume"] if latest_resume and latest_resume.status == "completed" else [],
                 "resume": {"id": latest_resume.id, "filename": latest_resume.original_filename, "status": latest_resume.status} if latest_resume else None}
 
     def skills(self, user: User) -> list[dict]:
@@ -159,11 +172,9 @@ class JobService:
 
     def output(self, job: Job, candidate: Candidate | None = None) -> dict:
         required = [link.skill.name for link in job.required_skills]
-        has_profile_data = bool(candidate and candidate.resumes and max(candidate.resumes, key=lambda item: item.created_at).status == "completed" and (
-            candidate.skills or candidate.years_experience or candidate.desired_role or candidate.highest_education
-            or any(resume.status == "completed" for resume in candidate.resumes)
-        ))
-        result = self.matching.calculate(candidate, job) if candidate and has_profile_data else None
+        candidate_names = {link.skill.name.casefold() for link in candidate.skills if link.source == "resume"} if candidate else set()
+        has_job_skill_match = any(link.required and link.skill.name.casefold() in candidate_names for link in job.required_skills)
+        result = self.matching.calculate(candidate, job) if candidate and self.matching.has_analyzed_resume(candidate) and has_job_skill_match else None
         if result:
             self.db.flush()
         return {"job_id": job.id, "title": job.title,
@@ -540,33 +551,55 @@ class ResumeService:
             resume.status = "processing"
             db.commit()
             extension = resume.original_filename.rsplit(".", 1)[-1].lower()
-            if extension == "doc":
-                raise ValueError("Legacy DOC parsing is not supported; convert the file to PDF or DOCX")
             content = resume_storage.read(resume.storage_key)
             if extension == "pdf":
-                pages = PdfReader(io.BytesIO(content)).pages
+                reader = PdfReader(io.BytesIO(content))
+                if reader.get_fields():
+                    resume.status = "failed"
+                    resume.error_message = "This PDF contains form fields, not a resume. Upload a text-based PDF or DOCX resume."
+                    db.commit()
+                    return
+                pages = reader.pages
                 text = "\n".join(page.extract_text() or "" for page in pages)
             else:
                 document = Document(io.BytesIO(content))
                 text = "\n".join(paragraph.text for paragraph in document.paragraphs)
-            resume.extracted_text = text[:1_000_000]
-            resume.status = "completed"
             candidate = db.get(Candidate, resume.candidate_id)
-            if candidate and text:
-                available = db.scalars(select(Skill)).all()
-                found = {skill.name.casefold(): skill for skill in available if skill.name.casefold() in text.casefold()}
-                for skill in found.values():
-                    exists = db.scalar(select(CandidateSkill.id).where(CandidateSkill.candidate_id == candidate.id, CandidateSkill.skill_id == skill.id))
-                    if exists is None:
-                        db.add(CandidateSkill(candidate_id=candidate.id, skill_id=skill.id, source="resume"))
-                experience = re.search(r"(\d+(?:\.\d+)?)\s*\+?\s+years?", text, re.IGNORECASE)
-                if experience:
-                    candidate.years_experience = float(experience.group(1))
+            available = db.scalars(select(Skill)).all()
+            normalized_text = text.casefold()
+            found = {skill.name.casefold(): skill for skill in available
+                     if re.search(r"(?<![a-z0-9+#.])" + re.escape(skill.name.casefold()) + r"(?![a-z0-9+#.])", normalized_text)}
+            resume_sections = set(re.findall(r"\b(?:experience|education|employment|skills|projects|professional summary|work history|qualifications)\b", normalized_text))
+            explicit_resume_heading = re.search(r"\b(?:resume|curriculum vitae|work experience|employment history|professional summary|professional experience|career objective)\b", normalized_text)
+            has_contact = re.search(r"[\w.+-]+@[\w.-]+\.[a-z]{2,}|(?:\+?\d[\d() .-]{7,}\d)", normalized_text)
+            has_resume_structure = bool(explicit_resume_heading or (has_contact and len(resume_sections) >= 3))
+            if candidate is None or len(text.strip()) < 100 or len(resume_sections) < 2 or not has_resume_structure or not found:
+                resume.status = "failed"
+                resume.error_message = "This file does not contain enough resume information and recognizable job skills. Upload a text-based PDF or DOCX resume."
+                db.commit()
+                return
+            resume.extracted_text = text[:1_000_000]
+            for skill in found.values():
+                existing_skill = db.scalar(select(CandidateSkill).where(
+                    CandidateSkill.candidate_id == candidate.id,
+                    CandidateSkill.skill_id == skill.id,
+                ))
+                if existing_skill is None:
+                    db.add(CandidateSkill(candidate_id=candidate.id, skill_id=skill.id, source="resume"))
+                else:
+                    existing_skill.source = "resume"
+            experience = re.search(r"(\d+(?:\.\d+)?)\s*\+?\s+years?", text, re.IGNORECASE)
+            if experience:
+                candidate.years_experience = float(experience.group(1))
+            resume.status = "completed"
             db.commit()
-        except Exception as exc:
+        except Exception:
             db.rollback()
+            logger.exception("Resume analysis failed for resume %s", resume_id)
             resume = db.get(Resume, resume_id)
             if resume:
-                resume.status = "failed"; resume.error_message = str(exc)[:1000]; db.commit()
+                resume.status = "failed"
+                resume.error_message = "Resume analysis failed. Upload a text-based PDF or DOCX resume with experience and skills, then try again."
+                db.commit()
         finally:
             db.close()
