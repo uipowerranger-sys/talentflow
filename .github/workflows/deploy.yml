@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: talentflow-fullstack/frontend/package-lock.json
       - run: npm ci
         working-directory: talentflow-fullstack/frontend
-      - run: npm run build
+      - run: npm run build -- --base=/talentflow/
         working-directory: talentflow-fullstack/frontend
       - run: cp talentflow-fullstack/frontend/dist/index.html talentflow-fullstack/frontend/dist/404.html
       - uses: actions/configure-pages@v5
