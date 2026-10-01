@@ -9,7 +9,7 @@ export function MatchDetails({ job, onClose, onApply }: { job: Job; onClose: () 
       <button className="modal-close" onClick={onClose} aria-label={t('jobs.close')}><i className="fa-solid fa-xmark" aria-hidden="true" /></button>
       <div className="form-eyebrow">{t('jobs.roleDetails')}</div>
       <h2 id="detail-title">{job.title}</h2>
-      <p className="detail-meta">{job.location} · {job.experience} · {job.employment_type}</p>
+      <p className="detail-meta">{job.category} · {job.experience} · {job.employment_type}</p>
       <div className="detail-score"><strong>{job.match_score}%</strong>
         <p>
             {job.match_score > 80 ? t('jobs.strongMatch') : job.match_score > 60 ?

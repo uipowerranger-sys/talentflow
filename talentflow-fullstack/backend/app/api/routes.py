@@ -6,7 +6,7 @@ from rq import Queue
 
 from app.api.dependencies import AdminUser, CurrentUser, DbSession, EmployeeUser, HrUser
 from app.core.config import settings
-from app.schemas import ApplicationDecisionRequest, ApplicationOut, CandidateSkillCreate, CandidateSkillUpdate, CreateHrRequest, JobCreateRequest, JobUpdateRequest, LoginRequest, MessageCreateRequest, MessageReplyRequest, RegisterRequest, ResumeStatusOut, TokenResponse
+from app.schemas import ApplicationDecisionRequest, ApplicationOut, CandidateSkillCreate, CandidateSkillUpdate, CreateHrRequest, JobCreateRequest, JobUpdateRequest, LoginRequest, LookupCreateRequest, LookupUpdateRequest, MessageCreateRequest, MessageReplyRequest, RegisterRequest, ResumeStatusOut, TokenResponse
 from app.services import ApplicationService, AuthService, CandidateService, JobService, ResumeService, SavedJobService, StaffService
 
 router = APIRouter()
@@ -40,14 +40,13 @@ def list_jobs(
     search: str | None = None,
     technology: str | None = None,
     category: str | None = None,
-    location: str | None = None,
     experience: str | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict:
     candidate = CandidateService(db).get(user)
     jobs = JobService(db).list(candidate, search=search, technology=technology, category=category,
-                               location=location, experience=experience, skip=skip, limit=limit)
+                               experience=experience, skip=skip, limit=limit)
     return {"jobs": jobs, "skip": skip, "limit": limit, "total": len(jobs)}
 
 
@@ -159,6 +158,46 @@ def employee_messages(user: EmployeeUser, db: DbSession) -> dict:
 @router.post("/hr/jobs", status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreateRequest, user: HrUser, db: DbSession) -> dict:
     return StaffService(db).create_job(user, payload)
+
+
+@router.get("/hr/categories")
+def hr_categories(user: HrUser, db: DbSession) -> list[dict]:
+    return StaffService(db).categories()
+
+
+@router.post("/hr/categories", status_code=status.HTTP_201_CREATED)
+def create_job_category(payload: LookupCreateRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).create_category(payload.name)
+
+
+@router.put("/hr/categories/{category_id}")
+def update_job_category(category_id: int, payload: LookupUpdateRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).update_category(category_id, payload.name)
+
+
+@router.delete("/hr/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job_category(category_id: int, user: HrUser, db: DbSession) -> None:
+    StaffService(db).delete_category(category_id)
+
+
+@router.get("/hr/skills")
+def hr_skills(user: HrUser, db: DbSession) -> list[dict]:
+    return StaffService(db).skills()
+
+
+@router.post("/hr/skills", status_code=status.HTTP_201_CREATED)
+def create_hr_skill(payload: LookupCreateRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).create_skill(payload.name)
+
+
+@router.put("/hr/skills/{skill_id}")
+def update_hr_skill(skill_id: int, payload: LookupUpdateRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).update_skill(skill_id, payload.name)
+
+
+@router.delete("/hr/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_hr_skill(skill_id: int, user: HrUser, db: DbSession) -> None:
+    StaffService(db).delete_skill(skill_id)
 
 
 @router.get("/hr/jobs")

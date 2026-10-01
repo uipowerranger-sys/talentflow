@@ -67,7 +67,7 @@ class JobRepository:
         self.db = db
 
     def list(self, search: str | None = None, technology: str | None = None,
-             category: str | None = None, location: str | None = None,
+             category: str | None = None,
              experience: str | None = None, skip: int = 0, limit: int = 20) -> list[Job]:
         # Employees can discover only jobs explicitly posted by an HR account.
         # This also hides legacy seed rows already present in persistent databases.
@@ -79,16 +79,13 @@ class JobRepository:
         if search:
             term = f"%{search.strip()}%"
             statement = statement.where(
-                Job.title.ilike(term) | Job.company.ilike(term) | Job.description.ilike(term)
-                | Job.location.ilike(term) | Job.category.ilike(term)
+                Job.title.ilike(term) | Job.description.ilike(term) | Job.category.ilike(term)
                 | Job.required_skills.any(JobSkill.skill.has(Skill.name.ilike(term)))
             )
         if technology:
             statement = statement.join(Job.required_skills).join(JobSkill.skill).where(Skill.name.ilike(technology))
         if category:
             statement = statement.where(Job.category.ilike(category))
-        if location:
-            statement = statement.where(Job.location.ilike(location))
         if experience:
             experience_range = self._parse_experience_range(experience)
             if experience_range is not None:

@@ -27,9 +27,7 @@ class TokenResponse(BaseModel):
 
 class JobCreateRequest(BaseModel):
     title: str = Field(min_length=2, max_length=200)
-    company: str = Field(min_length=2, max_length=200)
-    location: str = Field(min_length=2, max_length=160)
-    category: str = Field(min_length=2, max_length=120)
+    category: str = Field(min_length=1, max_length=120)
     employment_type: str = Field(default="Full time", max_length=50)
     experience_min: float = Field(default=0, ge=0, le=60)
     experience_max: float = Field(default=0, ge=0, le=60)
@@ -57,6 +55,22 @@ class JobUpdateRequest(JobCreateRequest):
 
 class ApplicationDecisionRequest(BaseModel):
     status: str = Field(pattern="^SELECTED$")
+
+
+class LookupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Name cannot be blank")
+        return normalized
+
+
+class LookupUpdateRequest(LookupCreateRequest):
+    pass
 
 
 class MessageCreateRequest(BaseModel):
@@ -105,8 +119,6 @@ class CandidateOut(BaseModel):
 class JobOut(BaseModel):
     job_id: int
     title: str
-    company: str
-    location: str
     category: str
     experience: str
     employment_type: str

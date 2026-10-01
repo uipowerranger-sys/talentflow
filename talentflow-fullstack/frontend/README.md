@@ -17,7 +17,7 @@ A React 18 + TypeScript + Vite front-end starter for the TalentFlow employee exp
 
 ## Data source
 
-This frontend uses the FastAPI API for authentication, jobs, and employee data. The job list starts empty; an HR user must post a job through the HR portal before employees can see it. The company name and mark are intentionally omitted from job cards and the match details view.
+This frontend uses the FastAPI API for authentication, jobs, and employee data. The job list starts empty; an HR user must post a job through the HR portal before employees can see it. Employer identity details are intentionally omitted from job cards and the match details view.
 
 ## Structure
 

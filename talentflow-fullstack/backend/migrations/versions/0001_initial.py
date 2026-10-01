@@ -12,8 +12,8 @@ depends_on = None
 
 def _initial_metadata() -> MetaData:
     metadata = MetaData()
-    later_tables = {"saved_jobs", "message_threads", "messages"}
-    later_columns = {"users": {"full_name"}, "jobs": {"created_by_user_id"}}
+    later_tables = {"saved_jobs", "message_threads", "messages", "job_categories"}
+    later_columns = {"users": {"full_name"}, "jobs": {"created_by_user_id"}, "candidate_skills": {"source"}}
     for table in Base.metadata.sorted_tables:
         if table.name in later_tables:
             continue

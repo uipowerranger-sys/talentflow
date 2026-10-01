@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -47,6 +47,13 @@ class Skill(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
 
 
+class JobCategory(Base):
+    __tablename__ = "job_categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+
+
 class CandidateSkill(Base):
     __tablename__ = "candidate_skills"
     __table_args__ = (UniqueConstraint("candidate_id", "skill_id", name="uq_candidate_skill"),)
@@ -61,12 +68,9 @@ class CandidateSkill(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
-    __table_args__ = (Index("ix_jobs_location_category", "location", "category"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200), index=True)
-    company: Mapped[str] = mapped_column(String(200))
-    location: Mapped[str] = mapped_column(String(160), index=True)
     category: Mapped[str] = mapped_column(String(120), index=True)
     employment_type: Mapped[str] = mapped_column(String(50), default="Full time")
     experience_min: Mapped[float] = mapped_column(Float, default=0)

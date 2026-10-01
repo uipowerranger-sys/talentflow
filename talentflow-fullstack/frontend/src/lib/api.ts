@@ -17,7 +17,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 }
 
 export type ApiJob = {
-  job_id: number; title: string; company: string; location: string; category: string;
+  job_id: number; title: string; category: string;
   experience: string; employment_type: string; posted_at: string; required_skills: string[];
   description: string; match_score: number | null; can_apply: boolean; matched_skills: string[];
   missing_skills: string[]; skill_match: number | null; experience_match: number | null;
@@ -25,7 +25,7 @@ export type ApiJob = {
 };
 
 export type Job = {
-  job_id: number; title: string; company: string; location: string; experience: string;
+  job_id: number; title: string; experience: string;
   employment_type: string; posted_date: string; category: string; skills: string[];
   match_score: number | null; matched_skills: string[]; missing_skills: string[];
   skill_match: number | null; experience_match: number | null; technology_match: number | null; description: string;

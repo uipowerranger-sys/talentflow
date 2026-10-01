@@ -5,7 +5,7 @@ TalentFlow is a role-based internal employee experience application. React/Vite 
 ## Roles and first sign-in
 
 - **Admin:** created once from `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`; admins can create HR accounts.
-- **HR:** provisioned by an admin; HR users can publish, edit, and close their jobs, review employee profiles/resume text/applications, mark an applicant selected, and reply to employee messages. Selecting an applicant closes the related job so employees no longer see it.
+- **HR:** provisioned by an admin; HR users can manage job categories and skills through separate API-backed catalogs, choose them from dropdowns when publishing, edit, and close their jobs, review employee profiles/resume text/applications, mark an applicant selected, and reply to employee messages. Selecting an applicant closes the related job so employees no longer see it.
 - **Employee:** self-registers and gets employee access; employees can search jobs, upload, replace, or delete a resume, see profile match scores, save jobs, apply when eligible, and message HR.
 
 The API enforces these roles independently of frontend navigation. Do not register HR/admin accounts through the employee registration page.

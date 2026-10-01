@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
-from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobSkill, MatchResult, Message, MessageThread, Resume, SavedJob, Skill, User
+from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobCategory, JobSkill, MatchResult, Message, MessageThread, Resume, SavedJob, Skill, User
 from app.repositories import ApplicationRepository, CandidateRepository, JobRepository, MatchRepository, ResumeRepository, UserRepository
 from app.storage import resume_storage
 
@@ -166,7 +166,7 @@ class JobService:
         result = self.matching.calculate(candidate, job) if candidate and has_profile_data else None
         if result:
             self.db.flush()
-        return {"job_id": job.id, "title": job.title, "company": job.company, "location": job.location,
+        return {"job_id": job.id, "title": job.title,
                 "category": job.category, "experience": f"{job.experience_min:g}-{job.experience_max:g} years",
                 "employment_type": job.employment_type, "posted_at": job.posted_at, "required_skills": required,
                 "description": job.description, "match_score": result.score if result else None,
@@ -238,23 +238,103 @@ class StaffService:
         return getattr(user, "full_name", None) or (user.candidate.full_name if user.candidate else user.email)
 
     def create_job(self, hr: User, data) -> dict:
-        job = Job(title=data.title.strip(), company=data.company.strip(), location=data.location.strip(), category=data.category.strip(),
+        category = self._category_by_name(data.category)
+        selected_skills = self._skills_by_names(data.required_skills)
+        job = Job(title=data.title.strip(), category=category.name,
                   employment_type=data.employment_type.strip(), experience_min=data.experience_min, experience_max=data.experience_max,
                   description=data.description.strip(), created_by_user_id=hr.id)
         self.db.add(job)
         self.db.flush()
-        for raw_name in data.required_skills:
-            name = raw_name.strip()
-            if not name:
-                continue
-            skill = self.db.scalar(select(Skill).where(Skill.name.ilike(name)))
-            if skill is None:
-                skill = Skill(name=name)
-                self.db.add(skill)
-                self.db.flush()
+        for skill in selected_skills:
             self.db.add(JobSkill(job_id=job.id, skill_id=skill.id, required=True))
         self.db.commit()
-        return {"job_id": job.id, "title": job.title, "company": job.company, "created_at": job.posted_at}
+        return {"job_id": job.id, "title": job.title, "created_at": job.posted_at}
+
+    def _category_by_name(self, name: str) -> JobCategory:
+        category = self.db.scalar(select(JobCategory).where(JobCategory.name.ilike(name.strip())))
+        if category is None:
+            raise HTTPException(status_code=422, detail="Choose a category from the HR category list")
+        return category
+
+    def _skills_by_names(self, names: list[str]) -> list[Skill]:
+        skills = []
+        for name in dict.fromkeys(value.strip() for value in names if value.strip()):
+            skill = self.db.scalar(select(Skill).where(Skill.name.ilike(name)))
+            if skill is None:
+                raise HTTPException(status_code=422, detail=f"Choose an existing required skill; '{name}' is not in the skill list")
+            skills.append(skill)
+        if not skills:
+            raise HTTPException(status_code=422, detail="Select at least one required skill")
+        return skills
+
+    def categories(self) -> list[dict]:
+        return [{"id": item.id, "name": item.name} for item in self.db.scalars(select(JobCategory).order_by(JobCategory.name)).all()]
+
+    def create_category(self, name: str) -> dict:
+        normalized = name.strip()
+        if self.db.scalar(select(JobCategory.id).where(JobCategory.name.ilike(normalized))):
+            raise HTTPException(status_code=409, detail="That category already exists")
+        category = JobCategory(name=normalized)
+        self.db.add(category)
+        self.db.commit()
+        return {"id": category.id, "name": category.name}
+
+    def update_category(self, category_id: int, name: str) -> dict:
+        category = self.db.get(JobCategory, category_id)
+        if category is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+        normalized = name.strip()
+        duplicate = self.db.scalar(select(JobCategory.id).where(JobCategory.id != category_id, JobCategory.name.ilike(normalized)))
+        if duplicate:
+            raise HTTPException(status_code=409, detail="That category already exists")
+        old_name = category.name
+        category.name = normalized
+        for job in self.db.scalars(select(Job).where(Job.category == old_name)).all():
+            job.category = normalized
+        self.db.commit()
+        return {"id": category.id, "name": category.name}
+
+    def delete_category(self, category_id: int) -> None:
+        category = self.db.get(JobCategory, category_id)
+        if category is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+        if self.db.scalar(select(Job.id).where(Job.category == category.name)):
+            raise HTTPException(status_code=409, detail="This category is used by job posts. Move those jobs to another category first.")
+        self.db.delete(category)
+        self.db.commit()
+
+    def skills(self) -> list[dict]:
+        return [{"id": item.id, "name": item.name} for item in self.db.scalars(select(Skill).order_by(Skill.name)).all()]
+
+    def create_skill(self, name: str) -> dict:
+        normalized = name.strip()
+        if self.db.scalar(select(Skill.id).where(Skill.name.ilike(normalized))):
+            raise HTTPException(status_code=409, detail="That skill already exists")
+        skill = Skill(name=normalized)
+        self.db.add(skill)
+        self.db.commit()
+        return {"id": skill.id, "name": skill.name}
+
+    def update_skill(self, skill_id: int, name: str) -> dict:
+        skill = self.db.get(Skill, skill_id)
+        if skill is None:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        normalized = name.strip()
+        duplicate = self.db.scalar(select(Skill.id).where(Skill.id != skill_id, Skill.name.ilike(normalized)))
+        if duplicate:
+            raise HTTPException(status_code=409, detail="That skill already exists")
+        skill.name = normalized
+        self.db.commit()
+        return {"id": skill.id, "name": skill.name}
+
+    def delete_skill(self, skill_id: int) -> None:
+        skill = self.db.get(Skill, skill_id)
+        if skill is None:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        if self.db.scalar(select(JobSkill.id).where(JobSkill.skill_id == skill_id)) or self.db.scalar(select(CandidateSkill.id).where(CandidateSkill.skill_id == skill_id)):
+            raise HTTPException(status_code=409, detail="This skill is used by a job or employee profile and cannot be deleted")
+        self.db.delete(skill)
+        self.db.commit()
 
     def _owned_job(self, hr: User, job_id: int) -> Job:
         job = self.db.scalar(select(Job).where(Job.id == job_id, Job.created_by_user_id == hr.id))
@@ -266,7 +346,7 @@ class StaffService:
         jobs = self.db.scalars(select(Job).where(Job.created_by_user_id == hr.id)
                                .options(selectinload(Job.required_skills).selectinload(JobSkill.skill))
                                .order_by(Job.posted_at.desc())).unique().all()
-        return [{"job_id": job.id, "title": job.title, "company": job.company, "location": job.location,
+        return [{"job_id": job.id, "title": job.title,
                  "category": job.category, "employment_type": job.employment_type,
                  "experience_min": job.experience_min, "experience_max": job.experience_max,
                  "description": job.description, "required_skills": [link.skill.name for link in job.required_skills],
@@ -277,24 +357,16 @@ class StaffService:
         if not job.is_active:
             raise HTTPException(status_code=409, detail="Closed jobs cannot be edited")
         job.title = data.title.strip()
-        job.company = data.company.strip()
-        job.location = data.location.strip()
-        job.category = data.category.strip()
+        category = self._category_by_name(data.category)
+        selected_skills = self._skills_by_names(data.required_skills)
+        job.category = category.name
         job.employment_type = data.employment_type.strip()
         job.experience_min = data.experience_min
         job.experience_max = data.experience_max
         job.description = data.description.strip()
         job.required_skills.clear()
         self.db.flush()
-        for raw_name in data.required_skills:
-            name = raw_name.strip()
-            if not name:
-                continue
-            skill = self.db.scalar(select(Skill).where(Skill.name.ilike(name)))
-            if skill is None:
-                skill = Skill(name=name)
-                self.db.add(skill)
-                self.db.flush()
+        for skill in selected_skills:
             job.required_skills.append(JobSkill(skill=skill, required=True))
         self.db.commit()
         return {"job_id": job.id, "title": job.title, "updated": True}

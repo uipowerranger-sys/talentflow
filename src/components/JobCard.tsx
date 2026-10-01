@@ -5,7 +5,7 @@ export function JobCard({ job, saved, onSave, onDetails, onApply }: { job: Job; 
   return <article className="job-card">
     <div className="job-card-top"><div className="job-title">
       <h3>{job.title}</h3>
-      <span>{job.location} · {job.experience} · {job.employment_type}</span>
+      <span>{job.category} · {job.experience} · {job.employment_type}</span>
     </div>
       <div className="score">
         <strong>{job.match_score}%</strong>
