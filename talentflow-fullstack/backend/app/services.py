@@ -159,7 +159,7 @@ class JobService:
 
     def output(self, job: Job, candidate: Candidate | None = None) -> dict:
         required = [link.skill.name for link in job.required_skills]
-        has_profile_data = bool(candidate and (
+        has_profile_data = bool(candidate and candidate.resumes and max(candidate.resumes, key=lambda item: item.created_at).status == "completed" and (
             candidate.skills or candidate.years_experience or candidate.desired_role or candidate.highest_education
             or any(resume.status == "completed" for resume in candidate.resumes)
         ))
