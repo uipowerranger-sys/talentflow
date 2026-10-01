@@ -51,6 +51,14 @@ class JobCreateRequest(BaseModel):
         return self
 
 
+class JobUpdateRequest(JobCreateRequest):
+    pass
+
+
+class ApplicationDecisionRequest(BaseModel):
+    status: str = Field(pattern="^SELECTED$")
+
+
 class MessageCreateRequest(BaseModel):
     subject: str = Field(min_length=3, max_length=200)
     body: str = Field(min_length=1, max_length=10000)

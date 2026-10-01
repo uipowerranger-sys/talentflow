@@ -15,9 +15,9 @@ A React 18 + TypeScript + Vite front-end starter for the TalentFlow employee exp
 - `/register` — create a demo account, then continue to `/login`.
 - `/jobs` — job search, filters, match details, resume prompt, and skills panel.
 
-## Demo limitations
+## Data source
 
-This is a front-end project with local sample data. Authentication is simulated in the browser, and resume selection is validated locally but is not uploaded. Connect the FastAPI API and secure resume storage before using it with real candidates or applications. The company name and mark are intentionally omitted from job cards and the match details view.
+This frontend uses the FastAPI API for authentication, jobs, and employee data. The job list starts empty; an HR user must post a job through the HR portal before employees can see it. The company name and mark are intentionally omitted from job cards and the match details view.
 
 ## Structure
 
@@ -25,7 +25,6 @@ This is a front-end project with local sample data. Authentication is simulated 
 src/
   app/                 App providers and routes
   components/          Shared header, auth layout, and job UI
-  data/                Sample job records
   features/
     auth/               Login and registration pages
     jobs/               Search page and query hook

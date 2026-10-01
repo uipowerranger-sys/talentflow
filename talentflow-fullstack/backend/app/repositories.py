@@ -69,7 +69,11 @@ class JobRepository:
     def list(self, search: str | None = None, technology: str | None = None,
              category: str | None = None, location: str | None = None,
              experience: str | None = None, skip: int = 0, limit: int = 20) -> list[Job]:
-        statement: Select[tuple[Job]] = select(Job).where(Job.is_active.is_(True)).options(
+        # Employees can discover only jobs explicitly posted by an HR account.
+        # This also hides legacy seed rows already present in persistent databases.
+        statement: Select[tuple[Job]] = select(Job).where(
+            Job.is_active.is_(True), Job.created_by_user_id.is_not(None)
+        ).options(
             selectinload(Job.required_skills).selectinload(JobSkill.skill)
         )
         if search:
@@ -93,7 +97,9 @@ class JobRepository:
         return list(self.db.scalars(statement.order_by(Job.posted_at.desc()).offset(skip).limit(min(limit, 100))).unique())
 
     def by_id(self, job_id: int) -> Job | None:
-        return self.db.scalar(select(Job).where(Job.id == job_id).options(
+        return self.db.scalar(select(Job).where(
+            Job.id == job_id, Job.is_active.is_(True), Job.created_by_user_id.is_not(None)
+        ).options(
             selectinload(Job.required_skills).selectinload(JobSkill.skill)
         ))
 

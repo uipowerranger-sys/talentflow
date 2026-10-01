@@ -256,6 +256,68 @@ class StaffService:
         self.db.commit()
         return {"job_id": job.id, "title": job.title, "company": job.company, "created_at": job.posted_at}
 
+    def _owned_job(self, hr: User, job_id: int) -> Job:
+        job = self.db.scalar(select(Job).where(Job.id == job_id, Job.created_by_user_id == hr.id))
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return job
+
+    def jobs(self, hr: User) -> list[dict]:
+        jobs = self.db.scalars(select(Job).where(Job.created_by_user_id == hr.id)
+                               .options(selectinload(Job.required_skills).selectinload(JobSkill.skill))
+                               .order_by(Job.posted_at.desc())).unique().all()
+        return [{"job_id": job.id, "title": job.title, "company": job.company, "location": job.location,
+                 "category": job.category, "employment_type": job.employment_type,
+                 "experience_min": job.experience_min, "experience_max": job.experience_max,
+                 "description": job.description, "required_skills": [link.skill.name for link in job.required_skills],
+                 "is_active": job.is_active, "posted_at": job.posted_at} for job in jobs]
+
+    def update_job(self, hr: User, job_id: int, data) -> dict:
+        job = self._owned_job(hr, job_id)
+        if not job.is_active:
+            raise HTTPException(status_code=409, detail="Closed jobs cannot be edited")
+        job.title = data.title.strip()
+        job.company = data.company.strip()
+        job.location = data.location.strip()
+        job.category = data.category.strip()
+        job.employment_type = data.employment_type.strip()
+        job.experience_min = data.experience_min
+        job.experience_max = data.experience_max
+        job.description = data.description.strip()
+        job.required_skills.clear()
+        self.db.flush()
+        for raw_name in data.required_skills:
+            name = raw_name.strip()
+            if not name:
+                continue
+            skill = self.db.scalar(select(Skill).where(Skill.name.ilike(name)))
+            if skill is None:
+                skill = Skill(name=name)
+                self.db.add(skill)
+                self.db.flush()
+            job.required_skills.append(JobSkill(skill=skill, required=True))
+        self.db.commit()
+        return {"job_id": job.id, "title": job.title, "updated": True}
+
+    def delete_job(self, hr: User, job_id: int) -> dict:
+        job = self._owned_job(hr, job_id)
+        job.is_active = False
+        self.db.commit()
+        return {"job_id": job.id, "deleted": True}
+
+    def select_employee(self, hr: User, application_id: int) -> dict:
+        application = self.db.get(Application, application_id)
+        if application is None:
+            raise HTTPException(status_code=404, detail="Application not found")
+        job = self._owned_job(hr, application.job_id)
+        if not job.is_active:
+            raise HTTPException(status_code=409, detail="This job is already closed")
+        application.status = "SELECTED"
+        self.db.add(ApplicationStatusHistory(application_id=application.id, status="SELECTED"))
+        job.is_active = False
+        self.db.commit()
+        return {"application_id": application.id, "status": application.status, "job_id": job.id, "job_closed": True}
+
     def employees(self) -> list[dict]:
         rows = self.db.scalars(select(Candidate).options(selectinload(Candidate.user), selectinload(Candidate.skills).selectinload(CandidateSkill.skill), selectinload(Candidate.resumes))).all()
         output = []
@@ -265,7 +327,7 @@ class StaffService:
             output.append({"id": candidate.id, "user_id": candidate.user_id, "name": candidate.full_name, "email": candidate.user.email,
                            "experience": candidate.years_experience, "skills": [link.skill.name for link in candidate.skills],
                            "resume": ({"filename": latest.original_filename, "status": latest.status, "extracted_text": latest.extracted_text} if latest else None),
-                           "applications": [{"job_id": item.job_id, "job_title": (self.db.get(Job, item.job_id).title if self.db.get(Job, item.job_id) else "Removed job"),
+                           "applications": [{"application_id": item.id, "job_id": item.job_id, "job_title": (self.db.get(Job, item.job_id).title if self.db.get(Job, item.job_id) else "Removed job"),
                                              "status": item.status, "match_score": item.match_score, "created_at": item.created_at} for item in applications]})
         return output
 
@@ -317,13 +379,14 @@ class SavedJobService:
             .options(selectinload(SavedJob.job).selectinload(Job.required_skills).selectinload(JobSkill.skill))
             .order_by(SavedJob.created_at.desc())
         ).all()
-        jobs = [JobService(self.db).output(item.job, candidate) for item in saved if item.job.is_active]
+        jobs = [JobService(self.db).output(item.job, candidate) for item in saved
+                if item.job.is_active and item.job.created_by_user_id is not None]
         self.db.commit()
         return jobs
 
     def save(self, candidate: Candidate, job_id: int) -> None:
         job = self.db.get(Job, job_id)
-        if job is None or not job.is_active:
+        if job is None or not job.is_active or job.created_by_user_id is None:
             raise HTTPException(status_code=404, detail="Job not found")
         exists = self.db.scalar(select(SavedJob.id).where(
             SavedJob.candidate_id == candidate.id, SavedJob.job_id == job_id,

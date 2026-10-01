@@ -5,7 +5,7 @@ TalentFlow is a role-based internal employee experience application. React/Vite 
 ## Roles and first sign-in
 
 - **Admin:** created once from `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`; admins can create HR accounts.
-- **HR:** provisioned by an admin; HR users can publish jobs, review employee profiles/resume text/applications, and reply to employee messages.
+- **HR:** provisioned by an admin; HR users can publish, edit, and close their jobs, review employee profiles/resume text/applications, mark an applicant selected, and reply to employee messages. Selecting an applicant closes the related job so employees no longer see it.
 - **Employee:** self-registers and gets employee access; employees can search jobs, upload a resume, see profile match scores, save jobs, apply when eligible, and message HR.
 
 The API enforces these roles independently of frontend navigation. Do not register HR/admin accounts through the employee registration page.
@@ -15,7 +15,7 @@ The API enforces these roles independently of frontend navigation. Do not regist
 1. Install Docker Desktop and make sure its engine is running.
 2. From this folder, copy `.env.example` to `.env`. Set a private random `JWT_SECRET_KEY`, `INITIAL_ADMIN_EMAIL`, and a unique `INITIAL_ADMIN_PASSWORD` with at least 12 characters.
 3. Start the app with `docker compose up --build`.
-4. Open [http://localhost:8080](http://localhost:8080). Sign in as the configured admin and create HR accounts. Employees can register from the sign-in screen. Ten starter job records are inserted into PostgreSQL for local evaluation.
+4. Open [http://localhost:8080](http://localhost:8080). Sign in as the configured admin and create HR accounts. HR users can then post jobs; employees can register and see those published jobs. The job list starts empty until an HR user posts a job.
 5. API documentation is at [http://localhost:8000/docs](http://localhost:8000/docs).
 
 The database and local resume files persist in Docker volumes. Stop the services with `docker compose down`; use `docker compose down -v` only when you intend to erase that local data.
@@ -45,7 +45,7 @@ During Blueprint setup, provide these values when prompted:
 - `AZURE_STORAGE_CONNECTION_STRING`: the secret connection string for an Azure Blob Storage account. The backend and resume worker share this value. Resume uploads must use persistent external storage because Render service filesystems are ephemeral and a disk attached to one service cannot be shared with the other.
 - `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`: the first Admin account credentials, stored as Render secrets. The bootstrap command creates this account only when it does not already exist; it never prints the password.
 
-The API and worker use `backend/` as their root directory. The API installs `requirements.txt`; its start command runs Alembic migrations, inserts the starter jobs, bootstraps the initial Admin if configured, and starts Uvicorn on Render's `$PORT`. The frontend uses `frontend/`, runs `npm ci && npm run build`, and publishes `dist/`. `VITE_API_BASE_URL` is a Vite build-time variable, so set it before the frontend build. The API accepts both PostgreSQL URL schemes and adapts Render's connection string to the installed `psycopg` driver.
+The API and worker use `backend/` as their root directory. The API installs `requirements.txt`; its start command runs Alembic migrations, bootstraps the initial Admin if configured, and starts Uvicorn on Render's `$PORT`. No jobs are inserted automatically: an Admin creates HR accounts, and an HR user must post a job before it appears in the employee portal. The frontend uses `frontend/`, runs `npm ci && npm run build`, and publishes `dist/`. `VITE_API_BASE_URL` is a Vite build-time variable, so set it before the frontend build. The API accepts both PostgreSQL URL schemes and adapts Render's connection string to the installed `psycopg` driver.
 
 After deployment, check `https://<api-host>/health` for `{"status":"ok"}`, sign in with the configured Admin, create HR accounts, then register an employee and upload a PDF or DOCX resume. The `/` route fallback is configured for React Router. Do not use GitHub Pages for this app: it cannot run the API, database, or worker.
 

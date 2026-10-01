@@ -6,7 +6,7 @@ from rq import Queue
 
 from app.api.dependencies import AdminUser, CurrentUser, DbSession, EmployeeUser, HrUser
 from app.core.config import settings
-from app.schemas import ApplicationOut, CandidateSkillCreate, CandidateSkillUpdate, CreateHrRequest, JobCreateRequest, LoginRequest, MessageCreateRequest, MessageReplyRequest, RegisterRequest, ResumeStatusOut, TokenResponse
+from app.schemas import ApplicationDecisionRequest, ApplicationOut, CandidateSkillCreate, CandidateSkillUpdate, CreateHrRequest, JobCreateRequest, JobUpdateRequest, LoginRequest, MessageCreateRequest, MessageReplyRequest, RegisterRequest, ResumeStatusOut, TokenResponse
 from app.services import ApplicationService, AuthService, CandidateService, JobService, ResumeService, SavedJobService, StaffService
 
 router = APIRouter()
@@ -153,6 +153,26 @@ def employee_messages(user: EmployeeUser, db: DbSession) -> dict:
 @router.post("/hr/jobs", status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreateRequest, user: HrUser, db: DbSession) -> dict:
     return StaffService(db).create_job(user, payload)
+
+
+@router.get("/hr/jobs")
+def hr_jobs(user: HrUser, db: DbSession) -> dict:
+    return {"jobs": StaffService(db).jobs(user)}
+
+
+@router.put("/hr/jobs/{job_id}")
+def update_job(job_id: int, payload: JobUpdateRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).update_job(user, job_id, payload)
+
+
+@router.delete("/hr/jobs/{job_id}")
+def delete_job(job_id: int, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).delete_job(user, job_id)
+
+
+@router.put("/hr/applications/{application_id}/status")
+def update_application_status(application_id: int, payload: ApplicationDecisionRequest, user: HrUser, db: DbSession) -> dict:
+    return StaffService(db).select_employee(user, application_id)
 
 
 @router.get("/hr/employees")
