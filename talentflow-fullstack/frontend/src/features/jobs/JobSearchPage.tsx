@@ -14,7 +14,7 @@ import { SkillsSection } from '../profile/SkillsSection';
 import { api, toJob, type ApiJob } from '../../lib/api';
 
 type View = 'jobs' | 'saved';
-type ResumeProfile = { resume: { status: string } | null };
+type ResumeProfile = { resume: { id: number; filename: string; status: string } | null };
 type ResumeStatus = { status: string; error_message?: string | null };
 
 export function JobSearchPage() {
@@ -112,13 +112,26 @@ export function JobSearchPage() {
     catch (error) { notify(error instanceof Error ? error.message : 'Could not apply.'); }
   }
 
+  async function deleteResume() {
+    if (!profile?.resume) return;
+    if (!window.confirm(`Delete your uploaded resume “${profile.resume.filename}”? You can upload it again or choose another file.`)) return;
+    try {
+      await api(`/resumes/${profile.resume.id}`, { method: 'DELETE' });
+      setResumeComplete(false);
+      setResumeId(null);
+      setResumeNotice('Resume deleted. Upload the same file again or choose a new one.');
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['profile'] }), queryClient.invalidateQueries({ queryKey: ['jobs'] })]);
+      notify('Resume deleted.');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Could not delete the resume.'); }
+  }
+
   const resumeState = resumeId !== null ? (resumeStatus?.status || 'queued') : resumeComplete ? 'completed' : profile?.resume?.status || '';
   const savedIds = new Set(savedJobs.map((job) => job.job_id));
   return <div className="app-page"><AppHeader name={name} activeView={view} onNavigate={setView} onSignOut={logout} /><main className="page-shell">
     <section className="page-intro"><div><div className="eyebrow light-eyebrow">Your next chapter starts here</div><h1>{view === 'saved' ? <>Your <span>saved jobs.</span></> : <>Find your next <span>opportunity.</span></>}</h1><p>{view === 'saved' ? 'The roles you bookmarked are kept here for you.' : 'Browse the latest roles, find your fit, and save the ones you like.'}</p></div><div className="live-note"><i /> Latest opportunities</div></section>
     <div className="workspace-grid"><aside className="side-panel"><div className="side-kicker">Opportunities</div><button className={`side-link ${view === 'jobs' ? 'active' : ''}`} onClick={() => setView('jobs')}>⌕ <span>All jobs</span></button><button className={`side-link ${view === 'saved' ? 'active' : ''}`} onClick={() => setView('saved')}>♡ <span>Saved jobs</span><b>{savedJobs.length}</b></button></aside>
       <section className="jobs-column" id="jobs">
-        {!resumeState || resumeState === 'failed' ? <><ResumeUpload onUploaded={(id) => { setResumeComplete(false); setResumeId(id); setResumeNotice('Resume uploaded. Analysis is running…'); void queryClient.invalidateQueries({ queryKey: ['profile'] }); }} />{resumeNotice && <p className="resume-status-note" role="status">{resumeNotice}</p>}</> : resumeState === 'completed' ? <div className="resume-complete"><span>✓</span><div><strong>Your resume has been analyzed</strong><small>{resumeNotice || 'Your job match percentages use your resume and skills.'}</small></div></div> : <div className="resume-complete"><span>…</span><div><strong>Analyzing your resume</strong><small>{resumeNotice || 'Your job match percentages will refresh when analysis is complete.'}</small></div></div>}
+        {!resumeState || resumeState === 'failed' ? <><ResumeUpload onUploaded={(id) => { setResumeComplete(false); setResumeId(id); setResumeNotice('Resume uploaded. Analysis is running…'); void queryClient.invalidateQueries({ queryKey: ['profile'] }); }} />{resumeNotice && <p className="resume-status-note" role="status">{resumeNotice}</p>}</> : <div className="resume-complete"><span>{resumeState === 'completed' ? '✓' : '…'}</span><div className="resume-copy"><strong>{resumeState === 'completed' ? 'Your resume has been analyzed' : 'Analyzing your resume'}</strong><small>{resumeNotice || (resumeState === 'completed' ? `Current file: ${profile?.resume?.filename || 'Resume'}. Your job match percentages use your resume and skills.` : 'Your job match percentages will refresh when analysis is complete.')}</small></div><div className="resume-actions"><ResumeUpload buttonLabel="Replace resume" onUploaded={(id) => { setResumeComplete(false); setResumeId(id); setResumeNotice('Resume replaced. Analysis is running…'); void queryClient.invalidateQueries({ queryKey: ['profile'] }); }} /><button className="text-button" onClick={() => void deleteResume()} disabled={!profile?.resume}>Delete</button></div></div>}
         <div className="filters-card"><label className="search-field"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search jobs, skills, categories or locations" aria-label="Search jobs, skills, categories or locations" /></label><div className="filter-row"><select aria-label="Technology" value={technology} onChange={(event) => setTechnology(event.target.value)}><option value="">All technologies</option>{technologies.map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Job category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Experience" value={experience} onChange={(event) => setExperience(event.target.value)}><option value="">Any experience</option>{experienceOptions.map((item) => <option key={item}>{item}</option>)}</select><button className="button secondary" onClick={() => { setQuery(''); setTechnology(''); setCategory(''); setExperience(''); }}>Clear filters</button></div></div>
         <div className="results-heading"><div><h2>{view === 'saved' ? 'Saved opportunities' : 'Latest opportunities'} <span>({visibleJobs.length})</span></h2><p>{view === 'saved' ? 'Your bookmarked roles.' : 'Newly posted roles, with profile matches when your skills are available.'}</p></div><span className="sort-label">Newest first</span></div>
         <div className="job-list">{visibleJobs.length ? visibleJobs.map((job) => <JobCard key={job.job_id} job={job} saved={savedIds.has(job.job_id)} onSave={() => toggleSaved(job, savedIds.has(job.job_id))} onDetails={() => setActiveJob(job)} onApply={() => apply(job.job_id)} />) : <div className="empty-state"><strong>{view === 'saved' && !savedJobs.length ? 'No saved jobs yet' : 'No matching opportunities found'}</strong><p>{view === 'saved' && !savedJobs.length ? 'Select the heart on any job to save it here.' : 'Try changing your search or filters.'}</p><button className="button secondary" onClick={() => { setView('jobs'); setQuery(''); setTechnology(''); setCategory(''); setExperience(''); }}>Browse all jobs</button></div>}</div>

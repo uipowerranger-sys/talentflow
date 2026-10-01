@@ -54,6 +54,7 @@ class CandidateSkill(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
     skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(20), default="manual", server_default="manual")
     candidate: Mapped[Candidate] = relationship(back_populates="skills")
     skill: Mapped[Skill] = relationship()
 

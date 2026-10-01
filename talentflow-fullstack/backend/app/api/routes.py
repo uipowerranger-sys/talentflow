@@ -133,6 +133,12 @@ def resume_status(resume_id: int, user: EmployeeUser, db: DbSession) -> dict:
     return {"resume_id": resume.id, "status": resume.status, "original_filename": resume.original_filename, "error_message": resume.error_message}
 
 
+@router.delete("/resumes/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_resume(resume_id: int, user: EmployeeUser, db: DbSession) -> None:
+    candidate = CandidateService(db).get(user)
+    ResumeService(db).delete(candidate, resume_id)
+
+
 @router.post("/jobs/{job_id}/apply", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
 def apply_to_job(job_id: int, user: EmployeeUser, db: DbSession) -> dict:
     candidate = CandidateService(db).get(user)

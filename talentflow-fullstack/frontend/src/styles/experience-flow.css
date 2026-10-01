@@ -4,4 +4,5 @@
 .filter-row .button{min-width:110px}
 .resume-status-note{font-size:10px;color:#706d78;margin:0 0 14px;padding:0 4px}
 .editable-skill button{cursor:pointer}
+.resume-actions{display:flex;align-items:center;gap:8px;margin-left:auto}.resume-upload-control{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.resume-upload-control .resume-copy{flex:0}.resume-actions>.text-button{color:#7b287b;font:600 11px Manrope;cursor:pointer}.resume-actions>.text-button:disabled{opacity:.5;cursor:not-allowed}@media(max-width:720px){.resume-complete{flex-wrap:wrap}.resume-actions{margin-left:0}}
 @media(max-width:720px){.topbar{gap:12px}.top-nav{gap:14px}.top-nav button{font-size:10px}.side-panel{justify-content:flex-start}}

@@ -38,5 +38,14 @@ class ResumeStorage:
             raise ValueError("Invalid storage key")
         return target.read_bytes()
 
+    def delete(self, key: str) -> None:
+        if self.azure:
+            self.azure.get_blob_client(settings.azure_resume_container, key).delete_blob(delete_snapshots="include")
+            return
+        target = (self.local_root / key).resolve()
+        if self.local_root not in target.parents:
+            raise ValueError("Invalid storage key")
+        target.unlink(missing_ok=True)
+
 
 resume_storage = ResumeStorage()

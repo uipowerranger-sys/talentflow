@@ -20,6 +20,7 @@ The jobs table starts empty. Create an HR account through the Admin flow and pos
 - `GET /api/jobs/{job_id}/match`, `POST /api/jobs/{job_id}/apply`
 - `GET /api/candidates/me`, `GET/POST /api/candidates/me/skills`, `DELETE /api/candidates/me/skills/{skill_id}`
 - `POST /api/resumes/upload`, `GET /api/resumes/status/{resume_id}`
+- `DELETE /api/resumes/{resume_id}` to remove an employee's uploaded resume; uploading a replacement removes the previous resume
 - `POST /api/hr/jobs`, `GET /api/hr/jobs`, `PUT/DELETE /api/hr/jobs/{job_id}`
 - `PUT /api/hr/applications/{application_id}/status` to select an applicant and close that job
 

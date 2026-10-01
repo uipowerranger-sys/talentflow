@@ -107,7 +107,7 @@ class CandidateService:
         return {"id": candidate.id, "full_name": candidate.full_name, "years_experience": candidate.years_experience,
                 "highest_education": candidate.highest_education, "desired_role": candidate.desired_role,
                 "email": user.email, "skills": [link.skill.name for link in candidate.skills],
-                "resume": {"status": latest_resume.status} if latest_resume else None}
+                "resume": {"id": latest_resume.id, "filename": latest_resume.original_filename, "status": latest_resume.status} if latest_resume else None}
 
     def skills(self, user: User) -> list[dict]:
         return [{"id": link.id, "name": link.skill.name} for link in self.get(user).skills]
@@ -411,6 +411,14 @@ class ResumeService:
         self.db = db
         self.resumes = ResumeRepository(db)
 
+    def _clear_resume_profile_data(self, candidate: Candidate) -> None:
+        extracted_skills = self.db.scalars(select(CandidateSkill).where(
+            CandidateSkill.candidate_id == candidate.id, CandidateSkill.source == "resume"
+        )).all()
+        for skill in extracted_skills:
+            self.db.delete(skill)
+        candidate.years_experience = 0
+
     async def upload(self, candidate: Candidate, upload: UploadFile) -> Resume:
         filename = upload.filename or "resume"
         suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -421,10 +429,27 @@ class ResumeService:
             raise HTTPException(status_code=413, detail="Resume must be non-empty and no larger than the configured limit")
         content_type = upload.content_type or "application/octet-stream"
         key = resume_storage.save(filename, content, content_type)
+        previous_resumes = self.db.scalars(select(Resume).where(Resume.candidate_id == candidate.id)).all()
+        previous_keys = [item.storage_key for item in previous_resumes]
+        self._clear_resume_profile_data(candidate)
+        for previous in previous_resumes:
+            self.db.delete(previous)
         resume = self.resumes.add(Resume(candidate_id=candidate.id, original_filename=filename[:255], storage_key=key, content_type=content_type, status="queued"))
         self.db.commit()
+        for previous_key in previous_keys:
+            resume_storage.delete(previous_key)
         self.db.refresh(resume)
         return resume
+
+    def delete(self, candidate: Candidate, resume_id: int) -> None:
+        resume = self.resumes.by_id_for_candidate(resume_id, candidate.id)
+        if resume is None:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        key = resume.storage_key
+        self._clear_resume_profile_data(candidate)
+        self.db.delete(resume)
+        self.db.commit()
+        resume_storage.delete(key)
 
     def status(self, candidate: Candidate, resume_id: int) -> Resume:
         resume = self.resumes.by_id_for_candidate(resume_id, candidate.id)
@@ -461,7 +486,7 @@ class ResumeService:
                 for skill in found.values():
                     exists = db.scalar(select(CandidateSkill.id).where(CandidateSkill.candidate_id == candidate.id, CandidateSkill.skill_id == skill.id))
                     if exists is None:
-                        db.add(CandidateSkill(candidate_id=candidate.id, skill_id=skill.id))
+                        db.add(CandidateSkill(candidate_id=candidate.id, skill_id=skill.id, source="resume"))
                 experience = re.search(r"(\d+(?:\.\d+)?)\s*\+?\s+years?", text, re.IGNORECASE)
                 if experience:
                     candidate.years_experience = float(experience.group(1))
