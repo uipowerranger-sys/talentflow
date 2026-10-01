@@ -17,7 +17,7 @@ export function RegisterPage() {
     if (data.get('password') !== data.get('confirmPassword')) { setError('Those passwords don’t match. Please check and try again.'); return; }
     try {
       const result = await api<{ access_token: string }>('/auth/register', { method: 'POST', body: JSON.stringify({ full_name: `${data.get('firstName')} ${data.get('lastName')}`, email: data.get('email'), password: data.get('password') }) });
-      dispatch(signIn({ name: `${data.get('firstName')} ${data.get('lastName')}`, token: result.access_token }));
+      dispatch(signIn({ name: `${data.get('firstName')} ${data.get('lastName')}`, role: 'employee', token: result.access_token }));
       navigate('/jobs', { replace: true });
     } catch (error) { setError(error instanceof Error ? error.message : 'Unable to create your account.'); }
   }

@@ -8,6 +8,7 @@ import { store } from './store';
 import { queryClient } from './lib/queryClient';
 import './styles/global.css';
 import './styles/experience-flow.css';
+import './styles/staff.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

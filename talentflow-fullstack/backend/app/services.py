@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
-from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobSkill, MatchResult, Resume, SavedJob, Skill, User
+from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobSkill, MatchResult, Message, MessageThread, Resume, SavedJob, Skill, User
 from app.repositories import ApplicationRepository, CandidateRepository, JobRepository, MatchRepository, ResumeRepository, UserRepository
 from app.storage import resume_storage
 
@@ -26,7 +26,7 @@ class AuthService:
         normalized_email = email.lower().strip()
         if self.users.by_email(normalized_email):
             raise HTTPException(status_code=409, detail="An account with this email already exists")
-        user = self.users.add(User(email=normalized_email, password_hash=hash_password(password), role="candidate"))
+        user = self.users.add(User(email=normalized_email, password_hash=hash_password(password), role="employee"))
         self.db.add(Candidate(user_id=user.id, full_name=full_name.strip()))
         self.db.commit()
         return {"access_token": create_access_token(user.id), "token_type": "bearer"}
@@ -36,6 +36,15 @@ class AuthService:
         if user is None or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
         return {"access_token": create_access_token(user.id), "token_type": "bearer"}
+
+    def create_hr(self, email: str, password: str, full_name: str) -> dict:
+        normalized_email = email.lower().strip()
+        if self.users.by_email(normalized_email):
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+        user = self.users.add(User(email=normalized_email, password_hash=hash_password(password), role="hr"))
+        user.full_name = full_name.strip()
+        self.db.commit()
+        return {"id": user.id, "email": user.email, "full_name": user.full_name, "role": user.role}
 
 
 class MatchingService:
@@ -218,6 +227,83 @@ class ApplicationService:
             raise HTTPException(status_code=409, detail="You have already applied to this job") from None
         self.db.refresh(application)
         return application
+
+
+class StaffService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    @staticmethod
+    def user_name(user: User) -> str:
+        return getattr(user, "full_name", None) or (user.candidate.full_name if user.candidate else user.email)
+
+    def create_job(self, hr: User, data) -> dict:
+        job = Job(title=data.title.strip(), company=data.company.strip(), location=data.location.strip(), category=data.category.strip(),
+                  employment_type=data.employment_type.strip(), experience_min=data.experience_min, experience_max=data.experience_max,
+                  description=data.description.strip(), created_by_user_id=hr.id)
+        self.db.add(job)
+        self.db.flush()
+        for raw_name in data.required_skills:
+            name = raw_name.strip()
+            if not name:
+                continue
+            skill = self.db.scalar(select(Skill).where(Skill.name.ilike(name)))
+            if skill is None:
+                skill = Skill(name=name)
+                self.db.add(skill)
+                self.db.flush()
+            self.db.add(JobSkill(job_id=job.id, skill_id=skill.id, required=True))
+        self.db.commit()
+        return {"job_id": job.id, "title": job.title, "company": job.company, "created_at": job.posted_at}
+
+    def employees(self) -> list[dict]:
+        rows = self.db.scalars(select(Candidate).options(selectinload(Candidate.user), selectinload(Candidate.skills).selectinload(CandidateSkill.skill), selectinload(Candidate.resumes))).all()
+        output = []
+        for candidate in rows:
+            latest = max(candidate.resumes, key=lambda resume: resume.created_at) if candidate.resumes else None
+            applications = self.db.scalars(select(Application).where(Application.candidate_id == candidate.id).options(selectinload(Application.history))).all()
+            output.append({"id": candidate.id, "user_id": candidate.user_id, "name": candidate.full_name, "email": candidate.user.email,
+                           "experience": candidate.years_experience, "skills": [link.skill.name for link in candidate.skills],
+                           "resume": ({"filename": latest.original_filename, "status": latest.status, "extracted_text": latest.extracted_text} if latest else None),
+                           "applications": [{"job_id": item.job_id, "job_title": (self.db.get(Job, item.job_id).title if self.db.get(Job, item.job_id) else "Removed job"),
+                                             "status": item.status, "match_score": item.match_score, "created_at": item.created_at} for item in applications]})
+        return output
+
+    def employee_threads(self, employee: User) -> list[dict]:
+        return self._threads(select(MessageThread).where(MessageThread.employee_id == employee.id).order_by(MessageThread.updated_at.desc()))
+
+    def hr_threads(self, hr: User) -> list[dict]:
+        return self._threads(select(MessageThread).where((MessageThread.assigned_hr_id == None) | (MessageThread.assigned_hr_id == hr.id)).order_by(MessageThread.updated_at.desc()))
+
+    def _threads(self, statement) -> list[dict]:
+        threads = self.db.scalars(statement.options(selectinload(MessageThread.messages), selectinload(MessageThread.messages).selectinload(Message.sender))).all()
+        result = []
+        for thread in threads:
+            employee = self.db.get(User, thread.employee_id)
+            result.append({"id": thread.id, "subject": thread.subject, "employee_name": employee.candidate.full_name if employee and employee.candidate else employee.email if employee else "Employee",
+                           "employee_email": employee.email if employee else "", "updated_at": thread.updated_at,
+                           "messages": [{"id": message.id, "sender_role": message.sender.role, "sender_name": self.user_name(message.sender), "body": message.body, "created_at": message.created_at} for message in thread.messages]})
+        return result
+
+    def create_thread(self, employee: User, subject: str, body: str) -> dict:
+        thread = MessageThread(employee_id=employee.id, subject=subject.strip())
+        self.db.add(thread)
+        self.db.flush()
+        self.db.add(Message(thread_id=thread.id, sender_id=employee.id, body=body.strip()))
+        self.db.commit()
+        return {"id": thread.id, "subject": thread.subject}
+
+    def reply(self, hr: User, thread_id: int, body: str) -> dict:
+        thread = self.db.get(MessageThread, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail="Message thread not found")
+        if thread.assigned_hr_id not in (None, hr.id):
+            raise HTTPException(status_code=403, detail="This conversation is assigned to another HR user")
+        thread.assigned_hr_id = hr.id
+        thread.updated_at = datetime.now(timezone.utc)
+        self.db.add(Message(thread_id=thread.id, sender_id=hr.id, body=body.strip()))
+        self.db.commit()
+        return {"success": True}
 
 
 class SavedJobService:

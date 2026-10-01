@@ -5,6 +5,9 @@ services:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+psycopg://talentflow:talentflow@db:5432/talentflow
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-before-deploying}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-TalentFlow Administrator}
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173
       RESUME_STORAGE_DIR: /app/var/resumes
       REDIS_URL: redis://redis:6379/0

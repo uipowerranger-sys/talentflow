@@ -33,3 +33,16 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_roles(*roles: str):
+    def check_role(user: CurrentUser) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="You do not have permission to access this resource")
+        return user
+    return check_role
+
+
+EmployeeUser = Annotated[User, Depends(require_roles("employee", "candidate"))]
+HrUser = Annotated[User, Depends(require_roles("hr"))]
+AdminUser = Annotated[User, Depends(require_roles("admin"))]
