@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({ base: '/talentflow/', plugins: [react()], server: { proxy: { '/api': 'http://localhost:8000' } } });
+// Docker serves the app at /; GitHub Actions passes --base=/talentflow/ for Pages.
+export default defineConfig({ plugins: [react()], server: { proxy: { '/api': 'http://localhost:8000' } } });
