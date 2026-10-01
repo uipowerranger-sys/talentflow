@@ -15,22 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Unpack front-end source
-        run: unzip -q talentflow-source.zip -d app
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: talentflow-fullstack/frontend/package-lock.json
       - run: npm ci
-        working-directory: app
+        working-directory: talentflow-fullstack/frontend
       - run: npm run build
-        working-directory: app
-      - run: cp app/dist/index.html app/dist/404.html
+        working-directory: talentflow-fullstack/frontend
+      - run: cp talentflow-fullstack/frontend/dist/index.html talentflow-fullstack/frontend/dist/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: app/dist
+          path: talentflow-fullstack/frontend/dist
   deploy:
     environment:
       name: github-pages
