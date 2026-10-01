@@ -28,6 +28,15 @@ class CandidateSkillCreate(BaseModel):
         return list(dict.fromkeys(skill.strip() for skill in value if skill.strip()))
 
 
+class CandidateSkillUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
 class SkillOut(BaseModel):
     id: int
     name: str

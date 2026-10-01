@@ -8,11 +8,11 @@ from fastapi import HTTPException, UploadFile, status
 from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
-from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobSkill, MatchResult, Resume, Skill, User
+from app.models import Application, ApplicationStatusHistory, Candidate, CandidateSkill, Job, JobSkill, MatchResult, Resume, SavedJob, Skill, User
 from app.repositories import ApplicationRepository, CandidateRepository, JobRepository, MatchRepository, ResumeRepository, UserRepository
 from app.storage import resume_storage
 
@@ -115,6 +115,32 @@ class CandidateService:
             raise HTTPException(status_code=404, detail="Candidate skill not found")
         self.db.commit()
 
+    def update_skill(self, user: User, skill_id: int, name: str) -> dict[str, int | str]:
+        candidate = self.get(user)
+        link = next((item for item in candidate.skills if item.id == skill_id), None)
+        if link is None:
+            raise HTTPException(status_code=404, detail="Candidate skill not found")
+        normalized = name.strip()
+        if not normalized:
+            raise HTTPException(status_code=422, detail="Skill name cannot be empty")
+        if link.skill.name.casefold() == normalized.casefold():
+            return {"id": link.id, "name": link.skill.name}
+        target = self.db.scalar(select(Skill).where(Skill.name.ilike(normalized)))
+        if target is None:
+            target = Skill(name=normalized)
+            self.db.add(target)
+            self.db.flush()
+        duplicate = next((item for item in candidate.skills if item.id != link.id and item.skill_id == target.id), None)
+        if duplicate:
+            self.db.delete(link)
+            result = duplicate
+        else:
+            link.skill_id = target.id
+            result = link
+        self.db.commit()
+        self.db.refresh(result)
+        return {"id": result.id, "name": target.name}
+
 
 class JobService:
     def __init__(self, db: Session):
@@ -124,7 +150,11 @@ class JobService:
 
     def output(self, job: Job, candidate: Candidate | None = None) -> dict:
         required = [link.skill.name for link in job.required_skills]
-        result = self.matching.calculate(candidate, job) if candidate else None
+        has_profile_data = bool(candidate and (
+            candidate.skills or candidate.years_experience or candidate.desired_role or candidate.highest_education
+            or any(resume.status == "completed" for resume in candidate.resumes)
+        ))
+        result = self.matching.calculate(candidate, job) if candidate and has_profile_data else None
         if result:
             self.db.flush()
         return {"job_id": job.id, "title": job.title, "company": job.company, "location": job.location,
@@ -139,7 +169,6 @@ class JobService:
     def list(self, candidate: Candidate | None = None, **filters) -> list[dict]:
         result = [self.output(job, candidate) for job in self.jobs.list(**filters)]
         if candidate:
-            result.sort(key=lambda item: item["match_score"] or 0, reverse=True)
             self.db.commit()
         return result
 
@@ -191,8 +220,43 @@ class ApplicationService:
         return application
 
 
+class SavedJobService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def list(self, candidate: Candidate) -> list[dict]:
+        saved = self.db.scalars(
+            select(SavedJob)
+            .where(SavedJob.candidate_id == candidate.id)
+            .options(selectinload(SavedJob.job).selectinload(Job.required_skills).selectinload(JobSkill.skill))
+            .order_by(SavedJob.created_at.desc())
+        ).all()
+        jobs = [JobService(self.db).output(item.job, candidate) for item in saved if item.job.is_active]
+        self.db.commit()
+        return jobs
+
+    def save(self, candidate: Candidate, job_id: int) -> None:
+        job = self.db.get(Job, job_id)
+        if job is None or not job.is_active:
+            raise HTTPException(status_code=404, detail="Job not found")
+        exists = self.db.scalar(select(SavedJob.id).where(
+            SavedJob.candidate_id == candidate.id, SavedJob.job_id == job_id,
+        ))
+        if exists is None:
+            self.db.add(SavedJob(candidate_id=candidate.id, job_id=job_id))
+            self.db.commit()
+
+    def remove(self, candidate: Candidate, job_id: int) -> None:
+        saved = self.db.scalar(select(SavedJob).where(
+            SavedJob.candidate_id == candidate.id, SavedJob.job_id == job_id,
+        ))
+        if saved is not None:
+            self.db.delete(saved)
+            self.db.commit()
+
+
 class ResumeService:
-    allowed_extensions = {".pdf", ".doc", ".docx"}
+    allowed_extensions = {".pdf", ".docx"}
 
     def __init__(self, db: Session):
         self.db = db
@@ -202,7 +266,7 @@ class ResumeService:
         filename = upload.filename or "resume"
         suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         if suffix not in self.allowed_extensions:
-            raise HTTPException(status_code=415, detail="Upload a PDF, DOC, or DOCX resume")
+            raise HTTPException(status_code=415, detail="Upload a PDF or DOCX resume")
         content = await upload.read(settings.max_resume_size_bytes + 1)
         if not content or len(content) > settings.max_resume_size_bytes:
             raise HTTPException(status_code=413, detail="Resume must be non-empty and no larger than the configured limit")

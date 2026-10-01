@@ -27,12 +27,12 @@ export type ApiJob = {
 export type Job = {
   job_id: number; title: string; company: string; location: string; experience: string;
   employment_type: string; posted_date: string; category: string; skills: string[];
-  match_score: number; matched_skills: string[]; missing_skills: string[];
-  skill_match: number; experience_match: number; technology_match: number; description: string;
+  match_score: number | null; matched_skills: string[]; missing_skills: string[];
+  skill_match: number | null; experience_match: number | null; technology_match: number | null; description: string;
 };
 
 export function toJob(job: ApiJob): Job {
   return { ...job, posted_date: job.posted_at, skills: job.required_skills,
-    match_score: job.match_score ?? 0, skill_match: job.skill_match ?? 0,
-    experience_match: job.experience_match ?? 0, technology_match: job.technology_match ?? 0 };
+    match_score: job.match_score, skill_match: job.skill_match,
+    experience_match: job.experience_match, technology_match: job.technology_match };
 }

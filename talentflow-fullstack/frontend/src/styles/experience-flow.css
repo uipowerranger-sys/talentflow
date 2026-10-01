@@ -1,0 +1,7 @@
+.top-nav button{border:0;background:none;padding:8px 0;color:#68636e;text-decoration:none;font:inherit;font-size:12px;cursor:pointer}
+.top-nav button.selected{color:var(--purple);font-weight:700}
+.side-panel .side-link{border:0;background:transparent;width:100%;text-align:left;cursor:pointer;font-family:inherit}
+.filter-row .button{min-width:110px}
+.resume-status-note{font-size:10px;color:#706d78;margin:0 0 14px;padding:0 4px}
+.editable-skill button{cursor:pointer}
+@media(max-width:720px){.topbar{gap:12px}.top-nav{gap:14px}.top-nav button{font-size:10px}.side-panel{justify-content:flex-start}}

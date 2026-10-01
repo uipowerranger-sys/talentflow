@@ -121,6 +121,17 @@ class MatchResult(Base):
     job: Mapped[Job] = relationship(back_populates="matches")
 
 
+class SavedJob(Base):
+    __tablename__ = "saved_jobs"
+    __table_args__ = (UniqueConstraint("candidate_id", "job_id", name="uq_saved_candidate_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    job: Mapped[Job] = relationship()
+
+
 class Application(Base):
     __tablename__ = "applications"
     __table_args__ = (UniqueConstraint("candidate_id", "job_id", name="uq_application_candidate_job"),)

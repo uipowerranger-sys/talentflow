@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CurrentUser, DbSession
 from app.core.config import settings
 from app.models import User
-from app.schemas import ApplicationOut, CandidateSkillCreate, LoginRequest, RegisterRequest, ResumeStatusOut, TokenResponse
-from app.services import ApplicationService, AuthService, CandidateService, JobService, ResumeService
+from app.schemas import ApplicationOut, CandidateSkillCreate, CandidateSkillUpdate, LoginRequest, RegisterRequest, ResumeStatusOut, TokenResponse
+from app.services import ApplicationService, AuthService, CandidateService, JobService, ResumeService, SavedJobService
 
 router = APIRouter()
 
@@ -49,6 +49,24 @@ def recommended_jobs(db: DbSession, user: CurrentUser, skip: int = Query(default
     return {"jobs": jobs, "skip": skip, "limit": limit, "total": len(jobs)}
 
 
+@router.get("/jobs/saved")
+def saved_jobs(db: DbSession, user: CurrentUser) -> dict:
+    candidate = CandidateService(db).get(user)
+    return {"jobs": SavedJobService(db).list(candidate)}
+
+
+@router.put("/jobs/{job_id}/saved", status_code=status.HTTP_200_OK)
+def save_job(job_id: int, user: CurrentUser, db: DbSession) -> dict[str, bool]:
+    SavedJobService(db).save(CandidateService(db).get(user), job_id)
+    return {"saved": True}
+
+
+@router.delete("/jobs/{job_id}/saved", status_code=status.HTTP_200_OK)
+def unsave_job(job_id: int, user: CurrentUser, db: DbSession) -> dict[str, bool]:
+    SavedJobService(db).remove(CandidateService(db).get(user), job_id)
+    return {"saved": False}
+
+
 @router.get("/jobs/{job_id}")
 def get_job(job_id: int, db: DbSession, user: CurrentUser) -> dict:
     candidate = CandidateService(db).get(user)
@@ -76,6 +94,11 @@ def add_candidate_skills(payload: CandidateSkillCreate, user: CurrentUser, db: D
     return CandidateService(db).add_skills(user, payload.skills)
 
 
+@router.put("/candidates/me/skills/{skill_id}")
+def update_candidate_skill(skill_id: int, payload: CandidateSkillUpdate, user: CurrentUser, db: DbSession) -> dict:
+    return CandidateService(db).update_skill(user, skill_id, payload.name)
+
+
 @router.delete("/candidates/me/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_candidate_skill(skill_id: int, user: CurrentUser, db: DbSession) -> None:
     CandidateService(db).remove_skill(user, skill_id)
@@ -85,7 +108,7 @@ def delete_candidate_skill(skill_id: int, user: CurrentUser, db: DbSession) -> N
 async def upload_resume(
     user: CurrentUser,
     db: DbSession,
-    file: Annotated[UploadFile, File(description="PDF, DOC, or DOCX resume")],
+    file: Annotated[UploadFile, File(description="PDF or DOCX resume")],
 ) -> dict:
     candidate = CandidateService(db).get(user)
     resume = await ResumeService(db).upload(candidate, file)

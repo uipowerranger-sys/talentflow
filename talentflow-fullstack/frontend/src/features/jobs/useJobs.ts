@@ -3,7 +3,7 @@ import { api, toJob, type ApiJob } from '../../lib/api';
 
 export function useJobs() {
   return useQuery({ queryKey: ['jobs'], queryFn: async () => {
-    const response = await api<{ jobs: ApiJob[] }>('/jobs/recommended');
+    const response = await api<{ jobs: ApiJob[] }>('/jobs?limit=100');
     return response.jobs.map(toJob);
   } });
 }

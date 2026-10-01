@@ -74,7 +74,11 @@ class JobRepository:
         )
         if search:
             term = f"%{search.strip()}%"
-            statement = statement.where(Job.title.ilike(term) | Job.company.ilike(term) | Job.description.ilike(term))
+            statement = statement.where(
+                Job.title.ilike(term) | Job.company.ilike(term) | Job.description.ilike(term)
+                | Job.location.ilike(term) | Job.category.ilike(term)
+                | Job.required_skills.any(JobSkill.skill.has(Skill.name.ilike(term)))
+            )
         if technology:
             statement = statement.join(Job.required_skills).join(JobSkill.skill).where(Skill.name.ilike(technology))
         if category:
@@ -82,9 +86,10 @@ class JobRepository:
         if location:
             statement = statement.where(Job.location.ilike(location))
         if experience:
-            years = self._parse_years(experience)
-            if years is not None:
-                statement = statement.where(Job.experience_min <= years, Job.experience_max >= years)
+            experience_range = self._parse_experience_range(experience)
+            if experience_range is not None:
+                minimum, maximum = experience_range
+                statement = statement.where(Job.experience_min <= maximum, Job.experience_max >= minimum)
         return list(self.db.scalars(statement.order_by(Job.posted_at.desc()).offset(skip).limit(min(limit, 100))).unique())
 
     def by_id(self, job_id: int) -> Job | None:
@@ -93,9 +98,17 @@ class JobRepository:
         ))
 
     @staticmethod
-    def _parse_years(value: str) -> float | None:
+    def _parse_experience_range(value: str) -> tuple[float, float] | None:
         try:
-            return float(value.strip().split("-", 1)[0].split("+", 1)[0].split()[0])
+            years = value.lower().replace("years", "").replace("year", "").strip()
+            if "+" in years:
+                minimum = float(years.split("+", 1)[0].strip())
+                return minimum, float("inf")
+            if "-" in years:
+                minimum, maximum = years.split("-", 1)
+                return float(minimum.strip()), float(maximum.strip())
+            exact = float(years)
+            return exact, exact
         except (ValueError, IndexError):
             return None
 
